@@ -13,7 +13,6 @@
 
 #define BCKG_NAME L"C:\\Users\\Lenovo\\Downloads\\ClpYqHIejcs.bmp" //L"C:\\Users\\Lenovo\\OneDrive\\Рабочий стол\\осасп2\\лаб1\\lab1.3\\penguin.bmp"
 
-#define WS_DATAENTRYWINDOW WS_OVERLAPPEDWINDOW ^ WS_THICKFRAME ^ WS_MAXIMIZEBOX | WS_DLGFRAME | WS_BORDER | WS_POPUP | WS_VISIBLE | WS_CHILD
 #define BTN_ENC_DEC 1
 #define BTN_ENC 2
 #define BTN_DEC 3
@@ -23,7 +22,6 @@
 #define BTN_HIDE_EXTRACT 7
 #define BTN_HIDE 8
 #define BTN_EXTRACT 9
-#define STATIC_MAINWIN 21
 
 using namespace std;
 
@@ -51,6 +49,9 @@ DWORD WINAPI Sign();
 DWORD WINAPI Check();
 DWORD WINAPI Hide();
 DWORD WINAPI Extract();
+
+BOOL InputValidation(int&, int&, int&, int&, HWND);
+BOOL IsPrime(int);
 
 HBITMAP hBitmap;
 HWND hWndMain;
@@ -97,7 +98,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         165, 120, 150, 40, hWndMain, reinterpret_cast<HMENU>(BTN_SIGN_CHECK), hInstance, NULL);
     HWND hBtnHE = CreateWindowEx(0, L"button", L"Steganography", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
         165, 190, 150, 40, hWndMain, reinterpret_cast<HMENU>(BTN_HIDE_EXTRACT), hInstance, NULL);
-    HWND hwndStatic = CreateWindow(L"static", L"Created by Bozhena Marchik, 2022", WS_CHILD | WS_VISIBLE | WS_BORDER, 5, 315, 230, 20, hWndMain, (HMENU)STATIC_MAINWIN, hInstance, NULL);
+    HWND hwndStatic = CreateWindow(L"static", L"Created by Bozhena Marchik, 2022", WS_CHILD | WS_VISIBLE | WS_BORDER, 5, 315, 230, 20, hWndMain, NULL, hInstance, NULL);
 
     RegisterEncDecWinClass();
     RegisterSignCheckWinClass();
@@ -209,7 +210,7 @@ void RegisterEncDecWinClass() { //окно шифрования/дешифров
     RegisterClassEx(&wcexed);
 }
 
-void RegisterSignCheckWinClass() { //окно шифрования/дешифрования
+void RegisterSignCheckWinClass() { //окно постановки/проверки ЭЦП
 
     WNDCLASSEX wcexsc;
     memset(&wcexsc, 0, sizeof(wcexsc));
@@ -223,7 +224,7 @@ void RegisterSignCheckWinClass() { //окно шифрования/дешифр�
     RegisterClassEx(&wcexsc);
 }
 
-void RegisterHideExtractWinClass() { //окно шифрования/дешифрования
+void RegisterHideExtractWinClass() { //окно стеганографии
 
     WNDCLASSEX wcexhe;
     memset(&wcexhe, 0, sizeof(wcexhe));
@@ -239,10 +240,16 @@ void RegisterHideExtractWinClass() { //окно шифрования/дешиф�
 
 LRESULT CALLBACK EncDecWinProc(HWND hWndED, UINT message, WPARAM wParam, LPARAM lParam) {
 
+    HWND hPStatic, hQStatic, hBStatic, hNStatic;
+    static HWND hPEdit, hQEdit, hBEdit, hNEdit;
     HWND hEncBtn, hDecBtn;
     RECT winRect;
-
     HANDLE threadEnc, threadDec;
+
+    char buf[11] = { 0 };
+    int p, q, b;
+    int n = 0;
+    int msb;
 
     switch (message)
     {
@@ -254,20 +261,52 @@ LRESULT CALLBACK EncDecWinProc(HWND hWndED, UINT message, WPARAM wParam, LPARAM 
         break;
     case WM_CREATE:
         SetOpenFileParams(hWndED);
-        hEncBtn = CreateWindow(L"button", L"encipher", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 50, 50, 70, 30, hWndED, reinterpret_cast<HMENU>(BTN_ENC), NULL, NULL);
-        hDecBtn = CreateWindow(L"button", L"decipher", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 150, 50, 70, 30, hWndED, reinterpret_cast<HMENU>(BTN_DEC), NULL, NULL);
+        hPStatic = CreateWindow(L"static", L"P =", WS_CHILD | WS_VISIBLE, 120, 50, 40, 20, hWndED, NULL, NULL, NULL);
+        hPEdit = CreateWindow(L"edit", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT, 145, 50, 100, 20, hWndED, NULL, NULL, NULL);
+        hQStatic = CreateWindow(L"static", L"Q =", WS_CHILD | WS_VISIBLE, 120, 90, 40, 20, hWndED, NULL, NULL, NULL);
+        hQEdit = CreateWindow(L"edit", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT, 145, 90, 100, 20, hWndED, NULL, NULL, NULL);
+        hBStatic = CreateWindow(L"static", L"B =", WS_CHILD | WS_VISIBLE, 120, 130, 40, 20, hWndED, NULL, NULL, NULL);
+        hBEdit = CreateWindow(L"edit", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT, 145, 130, 100, 20, hWndED, NULL, NULL, NULL);
+        hNStatic = CreateWindow(L"static", L"N =", WS_CHILD | WS_VISIBLE, 120, 170, 40, 20, hWndED, NULL, NULL, NULL);
+        hNEdit = CreateWindow(L"static", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT, 145, 170, 100, 20, hWndED, NULL, NULL, NULL);
+        hEncBtn = CreateWindow(L"button", L"Encipher", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 85, 250, 80, 30, hWndED, reinterpret_cast<HMENU>(BTN_ENC), NULL, NULL);
+        hDecBtn = CreateWindow(L"button", L"Decipher", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 215, 250, 80, 30, hWndED, reinterpret_cast<HMENU>(BTN_DEC), NULL, NULL);
+        
         break;
     case WM_COMMAND:
-    {
+    {     
+        GetWindowTextA(hPEdit, buf, 10);
+        p = atoi((const char*)buf);
+        GetWindowTextA(hQEdit, buf, 10);
+        q = atoi((const char*)buf);
+        GetWindowTextA(hBEdit, buf, 10);
+        b = atoi((const char*)buf);
+
         switch (LOWORD(wParam)) 
         {
         case BTN_ENC:
+            if (p == 0 || q == 0 || b == 0) {
+                msb = MessageBox(hWndED, L"Enter P, Q, B : natural numbers", L"error", MB_OK);
+                SetWindowTextA(hPEdit, "");
+                SetWindowTextA(hQEdit, "");
+                SetWindowTextA(hBEdit, "");
+                break;
+            }
+            if (!InputValidation(p, q, b, n, hNEdit)) //эн не выводится нахуй
+                break;
             if (GetOpenFileName(&ofn)) {
                 threadEnc = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)Encipher, NULL, NULL, NULL);
             }
         break;
 
         case BTN_DEC:
+            if (p == 0 || q == 0 || b == 0) {
+                msb = MessageBox(hWndED, L"Enter P, Q, B : natural numbers", L"error", MB_OK);
+                SetWindowTextA(hPEdit, "");
+                SetWindowTextA(hQEdit, "");
+                SetWindowTextA(hBEdit, "");
+                break;
+            }
             if (GetOpenFileName(&ofn)) {
                 threadDec = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)Decipher, NULL, NULL, NULL);
             }
@@ -647,7 +686,7 @@ DWORD WINAPI Sign() {
         i++;
     }
 
-    int msb = MessageBox(hWndED, L"signed. save to file?", L"result", MB_OK | MB_OKCANCEL); 
+    int msb = MessageBox(hWndSC, L"signed. save to file?", L"result", MB_OK | MB_OKCANCEL); 
     if (msb == IDOK) {
         if (GetSaveFileName(&ofn)) {
             WriteToFile(ByteArr, ofn.lpstrFile);
@@ -679,7 +718,7 @@ DWORD WINAPI Check() {
         i++;
     }
 
-    int msb = MessageBox(hWndED, L"checked. save to file?", L"result", MB_OK | MB_OKCANCEL); //три исхода проверки ЭЦП
+    int msb = MessageBox(hWndSC, L"checked. save to file?", L"result", MB_OK | MB_OKCANCEL); //три исхода проверки ЭЦП
     if (msb == IDOK) {
         if (GetSaveFileName(&ofn)) {
             WriteToFile(ByteArr, ofn.lpstrFile);
@@ -705,4 +744,60 @@ DWORD WINAPI Extract() {
 
     ReleaseMutex(hMutex);
     ExitThread(0);
+}
+
+BOOL InputValidation(int &p, int &q, int &b, int &n, HWND hNEdit) {
+    
+    int msb;
+    if (!IsPrime(p))
+    {
+        msb = MessageBox(hWndED, L"P must be a prime number", L"error", MB_OK);
+        return FALSE;
+    }
+    if (!IsPrime(q))
+    {
+        msb = MessageBox(hWndED, L"Q must be a prime number", L"error", MB_OK);
+        return FALSE;
+    }
+    if (p % 4 != 3)
+    {
+        msb = MessageBox(hWndED, L"Condition P = 3 mod 4 is not met", L"error", MB_OK);
+        return FALSE;
+    }
+    if (q % 4 != 3)
+    {
+        msb = MessageBox(hWndED, L"Condition Q = 3 mod 4 is not met", L"error", MB_OK);
+        return FALSE;
+    }
+    if (q == p)
+    {
+        msb = MessageBox(hWndED, L"P and Q must not be equal", L"error", MB_OK);
+        return FALSE;
+    }
+    n = p * q;
+    if (n >= INT_MAX)
+    {
+        msb = MessageBox(hWndED, L"Too large N. Choose other P and Q", L"error", MB_OK);
+        return FALSE;
+    }
+    if (b >= n)
+    {
+        msb = MessageBox(hWndED, L"Condition B < N is not met", L"error", MB_OK);
+        return FALSE;
+    }
+    
+    SetWindowTextA(hNEdit, (LPCSTR)n);
+    return TRUE;
+}
+
+BOOL IsPrime(int x) {
+
+    int i = 2;
+    while (i * i <= x)
+    {
+        if (x % i == 0)
+            return FALSE;
+        i++;
+    }
+    return TRUE;
 }
