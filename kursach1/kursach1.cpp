@@ -7,6 +7,9 @@
 #include <commdlg.h>
 #include <string>
 #include <stdio.h>
+#include <vector>
+#include <iostream>
+#include <fstream>
 
 #define MAX_LOADSTRING 100
 #define BUF 2048
@@ -29,6 +32,8 @@ static char Buf[BUF];
 wchar_t filename[260] = L"";
 OPENFILENAME ofn = { 0 };
 static unsigned char ByteArr[BUF] = { 0 };
+static int IntArr[BUF / 4] = { 0 };
+static int p, q, b, n;
 
 HINSTANCE hInst;                                // текущий экземпляр
 WCHAR szTitle[MAX_LOADSTRING];                  // Текст строки заголовка
@@ -41,8 +46,12 @@ INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 
 void SetOpenFileParams(HWND);
 LPVOID ReadFromFile(LPWSTR);
+vector<int> IntReadFromFile(LPWSTR);
+void IntWriteToFile(int [BUF / 4], LPWSTR);
 void WriteToFile(unsigned char [BUF], LPWSTR);
-void ClearBufs(unsigned char (&)[BUF], char (&)[BUF]);
+void ClearBuf(char (&)[BUF]);
+void ClearByteArr(unsigned char (&)[BUF]);
+void ClearIntArr(int (&)[BUF / 4]);
 DWORD WINAPI Encipher();
 DWORD WINAPI Decipher();
 DWORD WINAPI Sign();
@@ -50,8 +59,10 @@ DWORD WINAPI Check();
 DWORD WINAPI Hide();
 DWORD WINAPI Extract();
 
-BOOL InputValidation(int&, int&, int&, int&, HWND);
+BOOL InputValidation(int, int, int, int&);
 BOOL IsPrime(int);
+void ExtendedEuclideanAlgorithm(int, int, int&, int&);
+long FastExponentiation(long, int, int);
 
 HBITMAP hBitmap;
 HWND hWndMain;
@@ -247,9 +258,7 @@ LRESULT CALLBACK EncDecWinProc(HWND hWndED, UINT message, WPARAM wParam, LPARAM 
     HANDLE threadEnc, threadDec;
 
     char buf[11] = { 0 };
-    int p, q, b;
-    int n = 0;
-    int msb;
+    int msbED;
 
     switch (message)
     {
@@ -273,7 +282,7 @@ LRESULT CALLBACK EncDecWinProc(HWND hWndED, UINT message, WPARAM wParam, LPARAM 
         hDecBtn = CreateWindow(L"button", L"Decipher", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 215, 250, 80, 30, hWndED, reinterpret_cast<HMENU>(BTN_DEC), NULL, NULL);
         
         break;
-    case WM_COMMAND:
+    case WM_COMMAND: //191, 199, 45
     {     
         GetWindowTextA(hPEdit, buf, 10);
         p = atoi((const char*)buf);
@@ -286,14 +295,17 @@ LRESULT CALLBACK EncDecWinProc(HWND hWndED, UINT message, WPARAM wParam, LPARAM 
         {
         case BTN_ENC:
             if (p == 0 || q == 0 || b == 0) {
-                msb = MessageBox(hWndED, L"Enter P, Q, B : natural numbers", L"error", MB_OK);
-                SetWindowTextA(hPEdit, "");
-                SetWindowTextA(hQEdit, "");
-                SetWindowTextA(hBEdit, "");
+                msbED = MessageBox(hWndED, L"Enter P, Q, B: natural numbers", L"error", MB_OK);
+                //SetWindowTextA(hPEdit, "");
+                //SetWindowTextA(hQEdit, "");
+                //SetWindowTextA(hBEdit, "");
                 break;
             }
-            if (!InputValidation(p, q, b, n, hNEdit)) //эн не выводится нахуй
+            if (!InputValidation(p, q, b, n)) 
                 break;
+
+            _itoa(n, buf, 10);
+            SetWindowTextA(hNEdit, buf);
             if (GetOpenFileName(&ofn)) {
                 threadEnc = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)Encipher, NULL, NULL, NULL);
             }
@@ -301,12 +313,14 @@ LRESULT CALLBACK EncDecWinProc(HWND hWndED, UINT message, WPARAM wParam, LPARAM 
 
         case BTN_DEC:
             if (p == 0 || q == 0 || b == 0) {
-                msb = MessageBox(hWndED, L"Enter P, Q, B : natural numbers", L"error", MB_OK);
-                SetWindowTextA(hPEdit, "");
-                SetWindowTextA(hQEdit, "");
-                SetWindowTextA(hBEdit, "");
+                msbED = MessageBox(hWndED, L"Enter P, Q, B: natural numbers", L"error", MB_OK);
                 break;
             }
+            if (!InputValidation(p, q, b, n))
+                break;
+
+            _itoa(n, buf, 10);
+            SetWindowTextA(hNEdit, buf);
             if (GetOpenFileName(&ofn)) {
                 threadDec = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)Decipher, NULL, NULL, NULL);
             }
@@ -579,6 +593,38 @@ LPVOID ReadFromFile(LPWSTR path) {
     return Buf;
 }
 
+vector<int> IntReadFromFile(LPWSTR path) {
+    HANDLE LoadFile = CreateFile(path, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+    DWORD bytes;
+    ReadFile(LoadFile, Buf, BUF, &bytes, NULL);
+    try
+    {
+        int pos = 0;
+        int i = 0;
+        int length = sizeof(Buf);
+        unsigned char b[4] = { 0 };
+        vector<int> res(length / 4);
+        while (pos < length)
+        {
+            for (int k = 0; k < 4; k++)
+                b[k] = Buf[pos + k];
+            //res[i] = (int)Buf[pos] + ((int)Buf[pos + 1] << 8) + ((int)Buf[pos + 2] << 16) + ((int)Buf[pos + 3] << 24);
+            memcpy(&res[i], b, sizeof(int));
+            pos += sizeof(int);
+            i++;
+        }       
+        CloseHandle(LoadFile);
+        return res;
+    }
+    catch (...)
+    {
+        int msbRF = MessageBox(hWndED, L"read from file error.", L"error", MB_OK);
+        CloseHandle(LoadFile);
+        return vector<int>();
+    }
+}
+
 void WriteToFile(unsigned char Bytes[BUF], LPWSTR path) {
     HANDLE WFile = CreateFile(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
@@ -586,23 +632,56 @@ void WriteToFile(unsigned char Bytes[BUF], LPWSTR path) {
     CloseHandle(WFile);
 }
 
-void ClearBufs(unsigned char (&ByteArr)[BUF], char (&Buf)[BUF]) {
+void IntWriteToFile(int Data[BUF / 4], LPWSTR path) {
+    HANDLE WFile = CreateFile(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
+    WriteFile(WFile, Data, sizeof(Data) * 4, NULL, NULL);
+    CloseHandle(WFile);
+}
+
+void ClearBuf(char(&Buf)[BUF]) {
     int i = 0;
     BOOL flag = TRUE;
-    
-    while ((i < sizeof(Buf) || i < sizeof(ByteArr)) && flag) {
-        if (Buf[i] == '\0' && ByteArr[i] == '\0') {
+
+    while (i < sizeof(Buf) && flag) {
+        if (Buf[i] == '\0') {
             flag = FALSE;
             continue;
         }
         Buf[i] = '\0';
+        i++;
+    }
+}
+
+void ClearByteArr(unsigned char(&ByteArr)[BUF]) {
+    int i = 0;
+    BOOL flag = TRUE;
+
+    while (i < sizeof(ByteArr) && flag) {
+        if (ByteArr[i] == '\0') {
+            flag = FALSE;
+            continue;
+        }
         ByteArr[i] = '\0';
         i++;
     }
 }
 
-DWORD WINAPI Encipher() {
+void ClearIntArr(int (&IntArr)[BUF / 4]) {
+    int i = 0;
+    BOOL flag = TRUE;
+
+    while (i < sizeof(IntArr) && flag) {
+        if (IntArr[i] == '\0') {
+            flag = FALSE;
+            continue;
+        }
+        IntArr[i] = '\0';
+        i++;
+    }
+}
+
+DWORD WINAPI Encipher() { //абстракция нахуй солид блять
 
     WaitForSingleObject(hMutex, INFINITE);
 
@@ -615,21 +694,19 @@ DWORD WINAPI Encipher() {
             flag = FALSE;
             continue;
         }
-
-        ByteArr[i] = Buf[i];
-        //encipher
-
+        IntArr[i] = Buf[i] * (Buf[i] + b) % n;
         i++;
     }
 
-    int msb = MessageBox(hWndED, L"enciphered. save to file?", L"result", MB_OK | MB_OKCANCEL);
-    if (msb == IDOK) {
+    int msbE = MessageBox(hWndED, L"enciphered. save to file?", L"result", MB_OK | MB_OKCANCEL);
+    if (msbE == IDOK) {
         if (GetSaveFileName(&ofn)) {
-            WriteToFile(ByteArr, ofn.lpstrFile);
+            IntWriteToFile(IntArr, ofn.lpstrFile);
         }
     }
 
-    ClearBufs(ByteArr, Buf);
+    ClearBuf(Buf);
+    ClearIntArr(IntArr);
     ReleaseMutex(hMutex);
     ExitThread(0);
 }
@@ -638,30 +715,84 @@ DWORD WINAPI Decipher() {
 
     WaitForSingleObject(hMutex, INFINITE);
 
-    ReadFromFile(ofn.lpstrFile);
+    vector<int> originalCryptData = IntReadFromFile(ofn.lpstrFile);
+
+    int len = sizeof(originalCryptData);
+    int D, d1, d2, d3, d4, Mp, Mq, M;
+    int yp, yq;
+    ExtendedEuclideanAlgorithm(p, q, yp, yq);
 
     int i = 0;
     BOOL flag = TRUE;
-    while (i < sizeof(Buf) && flag) {
-        if (Buf[i] == '\0') {
+    while (i < sizeof(originalCryptData) && flag) {
+        if (originalCryptData[i] == '\0') {
             flag = FALSE;
             continue;
         }
 
-        ByteArr[i] = Buf[i];
-        //decipher
+        D = (b * b + 4 * originalCryptData[i]) % n;
+        Mp = (int)FastExponentiation(D, (p + 1) / 4, p);
+        Mq = (int)FastExponentiation(D, (q + 1) / 4, q);
+        long mul1 = p * Mq; mul1 *= yp;
+        long mul2 = q * Mp; mul2 *= yq;
+        long add = mul1 + mul2;
+        long sub = mul1 - mul2;
 
+        d1 = (int)(add % n);
+        if ((d1 - b) % 2 == 0)
+            M = (-b + d1) / 2 % n;
+        else
+            M = (-b + n + d1) / 2 % n;
+
+        if ((unsigned char)M == M)
+            ByteArr[i] = (unsigned char)M;
+        else {
+            d2 = n - d1;
+            if ((d2 - b) % 2 == 0)
+                M = (-b + d2) / 2 % n;
+            else
+                M = (-b + n + d2) / 2 % n;
+
+            if ((unsigned char)M == M)
+                ByteArr[i] = (unsigned char)M;
+            else {
+                d3 = (int)(sub % n);
+                if ((d3 - b) % 2 == 0)
+                    M = (-b + d3) / 2 % n;
+                else
+                    M = (-b + n + d3) / 2 % n;
+
+                if ((unsigned char)M == M)
+                    ByteArr[i] = (unsigned char)M;
+                else {
+                    d4 = n - d3;
+                    if ((d4 - b) % 2 == 0)
+                        M = (-b + d4) / 2 % n;
+                    else
+                        M = (-b + n + d4) / 2 % n;
+
+                    if ((unsigned char)M == M)
+                        ByteArr[i] = (unsigned char)M;
+                    else
+                        ByteArr[i] = 0;
+                    }
+                }
+            }
         i++;
     }
 
-    int msb = MessageBox(hWndED, L"deciphered. save to file?", L"result", MB_OK | MB_OKCANCEL);
-    if (msb == IDOK) {
+    //DisplayPrint<byte>(newPlainData, finFileTbox);
+    //WriteInFile("F:\\res.txt", newPlainData);
+
+    int msbD = MessageBox(hWndED, L"deciphered. save to file?", L"result", MB_OK | MB_OKCANCEL);
+    if (msbD == IDOK) {
         if (GetSaveFileName(&ofn)) {
             WriteToFile(ByteArr, ofn.lpstrFile);
         }
     }
 
-    ClearBufs(ByteArr, Buf);
+    ClearBuf(Buf);
+    ClearByteArr(ByteArr);
     ReleaseMutex(hMutex);
     ExitThread(0);
 }
@@ -693,7 +824,8 @@ DWORD WINAPI Sign() {
         }
     }
 
-    ClearBufs(ByteArr, Buf);
+    ClearBuf(Buf);
+    ClearByteArr(ByteArr);
     ReleaseMutex(hMutex);
     ExitThread(0);
 }
@@ -725,7 +857,8 @@ DWORD WINAPI Check() {
         }
     }
 
-    ClearBufs(ByteArr, Buf);
+    ClearBuf(Buf);
+    ClearByteArr(ByteArr);
     ReleaseMutex(hMutex);
     ExitThread(0);
 }
@@ -746,7 +879,7 @@ DWORD WINAPI Extract() {
     ExitThread(0);
 }
 
-BOOL InputValidation(int &p, int &q, int &b, int &n, HWND hNEdit) {
+BOOL InputValidation(int p, int q, int b, int &n) {
     
     int msb;
     if (!IsPrime(p))
@@ -785,8 +918,6 @@ BOOL InputValidation(int &p, int &q, int &b, int &n, HWND hNEdit) {
         msb = MessageBox(hWndED, L"Condition B < N is not met", L"error", MB_OK);
         return FALSE;
     }
-    
-    SetWindowTextA(hNEdit, (LPCSTR)n);
     return TRUE;
 }
 
@@ -800,4 +931,43 @@ BOOL IsPrime(int x) {
         i++;
     }
     return TRUE;
+}
+
+void ExtendedEuclideanAlgorithm(int num1, int num2, int &res1, int &res2) {
+
+    int d0 = num1, d1 = num2;
+    int x0 = 1, x1 = 0;
+    int y0 = 0, y1 = 1;
+    int q, d2, x2, y2;
+    while (d1 > 1)
+    {
+        q = d0 / d1;
+        d2 = d0 % d1;
+        x2 = x0 - q * x1;
+        y2 = y0 - q * y1;
+        d0 = d1;
+        d1 = d2;
+        x0 = x1;
+        x1 = x2;
+        y0 = y1;
+        y1 = y2;
+    }
+    res1 = x1;
+    res2 = y1;
+}
+
+long FastExponentiation(long number, int degree, int mod) {
+
+    long res = 1;
+    while (degree != 0)
+    {
+        while (degree % 2 == 0)
+        {
+            number = number * number % mod;
+            degree /= 2;
+        }
+        res = res * number % mod;
+        degree--;
+    }
+    return res;
 }
