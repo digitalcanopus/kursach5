@@ -10,9 +10,14 @@
 #include <vector>
 #include <iostream>
 #include <fstream>
+#include <cstdlib>
+
+#ifndef UNICODE
+#define UNICODE
+#endif 
 
 #define MAX_LOADSTRING 100
-#define BUF 2048
+#define BUF 32768
 
 #define BCKG_NAME L"C:\\Users\\Lenovo\\Downloads\\ClpYqHIejcs.bmp" //L"C:\\Users\\Lenovo\\OneDrive\\Рабочий стол\\осасп2\\лаб1\\lab1.3\\penguin.bmp"
 
@@ -32,8 +37,7 @@ static char Buf[BUF];
 wchar_t filename[260] = L"";
 OPENFILENAME ofn = { 0 };
 static unsigned char ByteArr[BUF] = { 0 };
-static int IntArr[BUF / 4] = { 0 };
-static int p, q, b, n;
+static int p, q, b, n, p1, q1, d, e;
 
 HINSTANCE hInst;                                // текущий экземпляр
 WCHAR szTitle[MAX_LOADSTRING];                  // Текст строки заголовка
@@ -47,11 +51,11 @@ INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 void SetOpenFileParams(HWND);
 LPVOID ReadFromFile(LPWSTR);
 vector<int> IntReadFromFile(LPWSTR);
-void IntWriteToFile(int [BUF / 4], LPWSTR);
-void WriteToFile(unsigned char [BUF], LPWSTR);
+void IntWriteToFile(int[BUF / 4], LPWSTR);
+void WriteToFile(unsigned char[BUF], LPWSTR, int);
 void ClearBuf(char (&)[BUF]);
 void ClearByteArr(unsigned char (&)[BUF]);
-void ClearIntArr(int (&)[BUF / 4]);
+void IntToString(int*, char (&)[BUF], int);
 DWORD WINAPI Encipher();
 DWORD WINAPI Decipher();
 DWORD WINAPI Sign();
@@ -59,17 +63,24 @@ DWORD WINAPI Check();
 DWORD WINAPI Hide();
 DWORD WINAPI Extract();
 
-BOOL InputValidation(int, int, int, int&);
+BOOL InputValidationED(int, int, int, int&);
+BOOL InputValidationS(int, int, int, int&);
 BOOL IsPrime(int);
 void ExtendedEuclideanAlgorithm(int, int, int&, int&);
 long FastExponentiation(long, int, int);
+int GetGCD(int, int);
+int MultInverse(int, int);
+int GetDigest(char*, int, int);
 
 HBITMAP hBitmap;
 HWND hWndMain;
 HINSTANCE HInstance;
 HWND hWndED, hWndSC, hWndHE;
 int NCmdShow;
-HANDLE hMutex = NULL;
+HANDLE hMutexOF = NULL, hMutex = NULL;
+HWND hPTEdit, hCTEdit;
+HWND hHEdit, hSEdit;
+DWORD bytesRead;
 
 void RegisterEncDecWinClass();
 void RegisterSignCheckWinClass();
@@ -180,7 +191,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 void CreateEncDecWin() {
 
     hWndED = CreateWindowEx(0, L"EncDecWindowClass", L"Encipher/Decipher", WS_OVERLAPPEDWINDOW | WS_BORDER | WS_POPUP | WS_VISIBLE | WS_CHILD,
-        200, 300, 400, 400, NULL, NULL, HInstance, NULL);
+        200, 300, 400, 480, NULL, NULL, HInstance, NULL);
 
     EnableWindow(hWndED, TRUE);
     ShowWindow(hWndED, SW_SHOWDEFAULT);
@@ -190,7 +201,7 @@ void CreateEncDecWin() {
 void CreateSignCheckWin() {
 
     hWndSC = CreateWindowEx(0, L"SignCheckWindowClass", L"Sign/Check sign", WS_OVERLAPPEDWINDOW | WS_BORDER | WS_POPUP | WS_VISIBLE | WS_CHILD,
-        600, 300, 400, 400, NULL, NULL, HInstance, NULL);
+        600, 300, 400, 410, NULL, NULL, HInstance, NULL);
 
     EnableWindow(hWndSC, TRUE);
     ShowWindow(hWndSC, SW_SHOWDEFAULT);
@@ -278,9 +289,10 @@ LRESULT CALLBACK EncDecWinProc(HWND hWndED, UINT message, WPARAM wParam, LPARAM 
         hBEdit = CreateWindow(L"edit", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT, 145, 130, 100, 20, hWndED, NULL, NULL, NULL);
         hNStatic = CreateWindow(L"static", L"N =", WS_CHILD | WS_VISIBLE, 120, 170, 40, 20, hWndED, NULL, NULL, NULL);
         hNEdit = CreateWindow(L"static", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT, 145, 170, 100, 20, hWndED, NULL, NULL, NULL);
-        hEncBtn = CreateWindow(L"button", L"Encipher", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 85, 250, 80, 30, hWndED, reinterpret_cast<HMENU>(BTN_ENC), NULL, NULL);
-        hDecBtn = CreateWindow(L"button", L"Decipher", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 215, 250, 80, 30, hWndED, reinterpret_cast<HMENU>(BTN_DEC), NULL, NULL);
-        
+        hEncBtn = CreateWindow(L"button", L"Encipher", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 85, 220, 80, 30, hWndED, reinterpret_cast<HMENU>(BTN_ENC), NULL, NULL);
+        hDecBtn = CreateWindow(L"button", L"Decipher", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 215, 220, 80, 30, hWndED, reinterpret_cast<HMENU>(BTN_DEC), NULL, NULL);
+        hPTEdit = CreateWindow(L"edit", L"plaintext", WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | ES_MULTILINE | ES_LEFT, 50, 280, 280, 60, hWndED, NULL, NULL, NULL);
+        hCTEdit = CreateWindow(L"edit", L"ciphertext", WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | ES_MULTILINE | ES_LEFT, 50, 360, 280, 60, hWndED, NULL, NULL, NULL);
         break;
     case WM_COMMAND: //191, 199, 45
     {     
@@ -297,11 +309,9 @@ LRESULT CALLBACK EncDecWinProc(HWND hWndED, UINT message, WPARAM wParam, LPARAM 
             if (p == 0 || q == 0 || b == 0) {
                 msbED = MessageBox(hWndED, L"Enter P, Q, B: natural numbers", L"error", MB_OK);
                 //SetWindowTextA(hPEdit, "");
-                //SetWindowTextA(hQEdit, "");
-                //SetWindowTextA(hBEdit, "");
                 break;
             }
-            if (!InputValidation(p, q, b, n)) 
+            if (!InputValidationED(p, q, b, n)) 
                 break;
 
             _itoa(n, buf, 10);
@@ -316,7 +326,7 @@ LRESULT CALLBACK EncDecWinProc(HWND hWndED, UINT message, WPARAM wParam, LPARAM 
                 msbED = MessageBox(hWndED, L"Enter P, Q, B: natural numbers", L"error", MB_OK);
                 break;
             }
-            if (!InputValidation(p, q, b, n))
+            if (!InputValidationED(p, q, b, n))
                 break;
 
             _itoa(n, buf, 10);
@@ -357,10 +367,14 @@ LRESULT CALLBACK EncDecWinProc(HWND hWndED, UINT message, WPARAM wParam, LPARAM 
 
 LRESULT CALLBACK SignCheckWinProc(HWND hWndSC, UINT message, WPARAM wParam, LPARAM lParam) {
 
+    HWND hPStatic, hQStatic, hDStatic, hEStatic;
+    static HWND hPEdit, hQEdit, hDEdit, hEEdit;
     HWND hSignBtn, hCheckBtn;
     RECT winRect;
-
     HANDLE threadSign, threadCheck;
+
+    char buf[11] = { 0 };
+    int msbSC;
 
     switch (message)
     {
@@ -371,21 +385,56 @@ LRESULT CALLBACK SignCheckWinProc(HWND hWndSC, UINT message, WPARAM wParam, LPAR
         UpdateWindow(hWndSC);
         break;
     case WM_CREATE:
-        SetOpenFileParams(hWndED);
-        hSignBtn = CreateWindow(L"button", L"sign file", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 50, 50, 80, 30, hWndSC, reinterpret_cast<HMENU>(BTN_SIGN), NULL, NULL);
-        hCheckBtn = CreateWindow(L"button", L"check sign", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 150, 50, 80, 30, hWndSC, reinterpret_cast<HMENU>(BTN_CHECK), NULL, NULL);
+        SetOpenFileParams(hWndSC);
+        hPStatic = CreateWindow(L"static", L"P =", WS_CHILD | WS_VISIBLE, 120, 50, 40, 20, hWndSC, NULL, NULL, NULL);
+        hPEdit = CreateWindow(L"edit", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT, 145, 50, 100, 20, hWndSC, NULL, NULL, NULL);
+        hQStatic = CreateWindow(L"static", L"Q =", WS_CHILD | WS_VISIBLE, 120, 90, 40, 20, hWndSC, NULL, NULL, NULL);
+        hQEdit = CreateWindow(L"edit", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT, 145, 90, 100, 20, hWndSC, NULL, NULL, NULL);
+        hDStatic = CreateWindow(L"static", L"D =", WS_CHILD | WS_VISIBLE, 120, 130, 40, 20, hWndSC, NULL, NULL, NULL);
+        hDEdit = CreateWindow(L"edit", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT, 145, 130, 100, 20, hWndSC, NULL, NULL, NULL);
+        hEStatic = CreateWindow(L"static", L"E =", WS_CHILD | WS_VISIBLE, 120, 170, 40, 20, hWndSC, NULL, NULL, NULL);
+        hEEdit = CreateWindow(L"static", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT, 145, 170, 100, 20, hWndSC, NULL, NULL, NULL);
+        hSignBtn = CreateWindow(L"button", L"Sign file", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 85, 220, 80, 30, hWndSC, reinterpret_cast<HMENU>(BTN_SIGN), NULL, NULL);
+        hCheckBtn = CreateWindow(L"button", L"Check sign", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 215, 220, 80, 30, hWndSC, reinterpret_cast<HMENU>(BTN_CHECK), NULL, NULL);
+        hHEdit = CreateWindow(L"edit", L"file hash", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT, 50, 280, 280, 20, hWndSC, NULL, NULL, NULL);
+        hSEdit = CreateWindow(L"edit", L"signature", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT, 50, 320, 280, 20, hWndSC, NULL, NULL, NULL);
         break;
-    case WM_COMMAND:
+    case WM_COMMAND: //13, 17, 7
     {
+        GetWindowTextA(hPEdit, buf, 10);
+        p1 = atoi((const char*)buf);
+        GetWindowTextA(hQEdit, buf, 10);
+        q1 = atoi((const char*)buf);
+        GetWindowTextA(hDEdit, buf, 10);
+        d = atoi((const char*)buf);
+
         switch (LOWORD(wParam))
         {
         case BTN_SIGN:
+            if (p1 == 0 || q1 == 0 || d == 0) {
+                msbSC = MessageBox(hWndSC, L"Enter P, Q, D: natural numbers", L"error", MB_OK);
+                break;
+            }
+            if (!InputValidationS(p1, q1, d, e))
+                break;
+
+            _itoa(e, buf, 10);
+            SetWindowTextA(hEEdit, buf);
             if (GetOpenFileName(&ofn)) {
                 threadSign = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)Sign, NULL, NULL, NULL);
             }
             break;
 
         case BTN_CHECK:
+            if (p1 == 0 || q1 == 0 || d == 0) {
+                msbSC = MessageBox(hWndSC, L"Enter P, Q, B: natural numbers", L"error", MB_OK);
+                break;
+            }
+            if (!InputValidationS(p1, q1, d, e))
+                break;
+
+            _itoa(e, buf, 10);
+            SetWindowTextA(hEEdit, buf);
             if (GetOpenFileName(&ofn)) {
                 threadCheck = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)Check, NULL, NULL, NULL);
             }
@@ -487,6 +536,7 @@ LRESULT CALLBACK HideExtractWinProc(HWND hWndHE, UINT message, WPARAM wParam, LP
 
 LRESULT CALLBACK WndProc(HWND hWndMain, UINT message, WPARAM wParam, LPARAM lParam)
 {
+    hMutexOF = CreateMutex(NULL, FALSE, NULL);
     hMutex = CreateMutex(NULL, FALSE, NULL);
 
     RECT winRect;
@@ -506,8 +556,6 @@ LRESULT CALLBACK WndProc(HWND hWndMain, UINT message, WPARAM wParam, LPARAM lPar
         switch (LOWORD(wParam)) {
         case BTN_ENC_DEC:
             CreateEncDecWin();
-            //SetFocus(hWnd);
-            //EnableWindow(hWndMain, FALSE);
             UpdateWindow(hWndMain);
             break;
         case BTN_SIGN_CHECK:
@@ -586,8 +634,7 @@ void SetOpenFileParams(HWND hWnd) {
 LPVOID ReadFromFile(LPWSTR path) {
     HANDLE LoadFile = CreateFile(path, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
-    DWORD bytes;
-    ReadFile(LoadFile, Buf, BUF, &bytes, NULL); //текст в буфере Buf
+    ReadFile(LoadFile, Buf, BUF, &bytesRead, NULL); 
     
     CloseHandle(LoadFile);
     return Buf;
@@ -596,22 +643,26 @@ LPVOID ReadFromFile(LPWSTR path) {
 vector<int> IntReadFromFile(LPWSTR path) {
     HANDLE LoadFile = CreateFile(path, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
-    DWORD bytes;
+    DWORD bytes = 0;
     ReadFile(LoadFile, Buf, BUF, &bytes, NULL);
     try
     {
+        BOOL flag = TRUE;
         int pos = 0;
         int i = 0;
-        int length = sizeof(Buf);
+        int length = BUF;
         unsigned char b[4] = { 0 };
-        vector<int> res(length / 4);
-        while (pos < length)
+        vector<int> res(bytes);
+        while (pos < length && flag)
         {
+            if (Buf[pos] == '\0') {
+                flag = FALSE;
+                continue;
+            }
             for (int k = 0; k < 4; k++)
                 b[k] = Buf[pos + k];
-            //res[i] = (int)Buf[pos] + ((int)Buf[pos + 1] << 8) + ((int)Buf[pos + 2] << 16) + ((int)Buf[pos + 3] << 24);
-            memcpy(&res[i], b, sizeof(int));
-            pos += sizeof(int);
+            memcpy(&res[i], b, 4);
+            pos += 4;
             i++;
         }       
         CloseHandle(LoadFile);
@@ -625,17 +676,17 @@ vector<int> IntReadFromFile(LPWSTR path) {
     }
 }
 
-void WriteToFile(unsigned char Bytes[BUF], LPWSTR path) {
+void WriteToFile(unsigned char Bytes[BUF], LPWSTR path, int bytesWrite) {
     HANDLE WFile = CreateFile(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
-    WriteFile(WFile, Bytes, sizeof(Bytes), NULL, NULL);
+    WriteFile(WFile, Bytes, bytesWrite, NULL, NULL);
     CloseHandle(WFile);
 }
 
 void IntWriteToFile(int Data[BUF / 4], LPWSTR path) {
     HANDLE WFile = CreateFile(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
-    WriteFile(WFile, Data, sizeof(Data) * 4, NULL, NULL);
+    WriteFile(WFile, Data, bytesRead * 4, NULL, NULL); 
     CloseHandle(WFile);
 }
 
@@ -667,37 +718,34 @@ void ClearByteArr(unsigned char(&ByteArr)[BUF]) {
     }
 }
 
-void ClearIntArr(int (&IntArr)[BUF / 4]) {
-    int i = 0;
-    BOOL flag = TRUE;
-
-    while (i < sizeof(IntArr) && flag) {
-        if (IntArr[i] == '\0') {
-            flag = FALSE;
-            continue;
+void IntToString(int* Text, char (&res)[BUF], int count) {
+    for (int i = 0; i < count * 4; i += 4) {
+        for (int j = 0; j < 4; j++) {
+            res[i + j] = (char)(Text[i / 4] >> j * 8);
+            if (res[i + j] == '\0')
+                res[i + j] = (char)32;
         }
-        IntArr[i] = '\0';
-        i++;
     }
 }
 
-DWORD WINAPI Encipher() { //абстракция нахуй солид блять
+DWORD WINAPI Encipher() { 
 
     WaitForSingleObject(hMutex, INFINITE);
-
     ReadFromFile(ofn.lpstrFile);
+    int readQu = bytesRead;
 
-    int i = 0;
-    BOOL flag = TRUE;
-    while (i < sizeof(Buf) && flag) {
-        if (Buf[i] == '\0') {
-            flag = FALSE;
-            continue;
-        }
+    int* IntArr = (int*)calloc(readQu, sizeof(int));
+    int count = 0;
+    for (int i = 0; i < readQu; i++) {
         IntArr[i] = Buf[i] * (Buf[i] + b) % n;
-        i++;
+        count++;
     }
 
+    SetWindowTextA(hPTEdit, Buf);
+    char res[BUF] = { 0 };
+    IntToString(IntArr, res, count);
+    SetWindowTextA(hCTEdit, res);
+    
     int msbE = MessageBox(hWndED, L"enciphered. save to file?", L"result", MB_OK | MB_OKCANCEL);
     if (msbE == IDOK) {
         if (GetSaveFileName(&ofn)) {
@@ -705,8 +753,8 @@ DWORD WINAPI Encipher() { //абстракция нахуй солид блят�
         }
     }
 
-    ClearBuf(Buf);
-    ClearIntArr(IntArr);
+    free(IntArr);
+    ClearBuf(Buf); 
     ReleaseMutex(hMutex);
     ExitThread(0);
 }
@@ -714,17 +762,22 @@ DWORD WINAPI Encipher() { //абстракция нахуй солид блят�
 DWORD WINAPI Decipher() {
 
     WaitForSingleObject(hMutex, INFINITE);
-
     vector<int> originalCryptData = IntReadFromFile(ofn.lpstrFile);
 
-    int len = sizeof(originalCryptData);
     int D, d1, d2, d3, d4, Mp, Mq, M;
     int yp, yq;
     ExtendedEuclideanAlgorithm(p, q, yp, yq);
 
     int i = 0;
+    int intsCount = 0;
+    int arrLen = originalCryptData.size();
+    for (int i = 0; i < arrLen; i++) {
+        if (originalCryptData[i] != 0)
+            intsCount++;
+        else continue;
+    }
     BOOL flag = TRUE;
-    while (i < sizeof(originalCryptData) && flag) {
+    while (i < arrLen && flag) {
         if (originalCryptData[i] == '\0') {
             flag = FALSE;
             continue;
@@ -780,17 +833,24 @@ DWORD WINAPI Decipher() {
             }
         i++;
     }
+    
+    int* intCryptData = (int*)calloc(arrLen, sizeof(int));
+    for (int i = 0; i < intsCount; i++) 
+        intCryptData[i] = originalCryptData[i];
 
-    //DisplayPrint<byte>(newPlainData, finFileTbox);
-    //WriteInFile("F:\\res.txt", newPlainData);
+    char res[BUF] = { 0 };
+    IntToString(intCryptData, res, arrLen);
+    SetWindowTextA(hPTEdit, res);
+    SetWindowTextA(hCTEdit, (LPCSTR)ByteArr);
 
     int msbD = MessageBox(hWndED, L"deciphered. save to file?", L"result", MB_OK | MB_OKCANCEL);
     if (msbD == IDOK) {
         if (GetSaveFileName(&ofn)) {
-            WriteToFile(ByteArr, ofn.lpstrFile);
+            WriteToFile(ByteArr, ofn.lpstrFile, intsCount);
         }
     }
 
+    free(intCryptData);
     ClearBuf(Buf);
     ClearByteArr(ByteArr);
     ReleaseMutex(hMutex);
@@ -800,32 +860,37 @@ DWORD WINAPI Decipher() {
 DWORD WINAPI Sign() {
 
     WaitForSingleObject(hMutex, INFINITE);
-
     ReadFromFile(ofn.lpstrFile);
+    int readQu = bytesRead;
 
-    int i = 0;
-    BOOL flag = TRUE;
-    while (i < sizeof(Buf) && flag) {
-        if (Buf[i] == '\0') {
-            flag = FALSE;
-            continue;
-        }
+    int r = p1 * q1;
+    int h = GetDigest(Buf, r, readQu);
+    int signature = FastExponentiation(h, d, r);
 
-        ByteArr[i] = Buf[i];
-        //sign
+    unsigned char* signedFile = new unsigned char[readQu + 7];
+    for (int i = 0; i < readQu; i++)
+        signedFile[i] = Buf[i];
+    signedFile[readQu] = '\r';
+    signedFile[readQu + 1] = '\n';
+  
+    char b[4] = { 0 };
+    _itoa(signature, b, 10);
+    for (int j = 0; j < 4; j++)
+        signedFile[readQu + 2 + j] = b[j];
 
-        i++;
-    }
+    SetWindowTextA(hHEdit, b);
+    _itoa(h, b, 10);
+    SetWindowTextA(hSEdit, b);
 
     int msb = MessageBox(hWndSC, L"signed. save to file?", L"result", MB_OK | MB_OKCANCEL); 
     if (msb == IDOK) {
         if (GetSaveFileName(&ofn)) {
-            WriteToFile(ByteArr, ofn.lpstrFile);
+            WriteToFile(signedFile, ofn.lpstrFile, readQu + 6);
         }
     }
 
+    delete [] signedFile;
     ClearBuf(Buf);
-    ClearByteArr(ByteArr);
     ReleaseMutex(hMutex);
     ExitThread(0);
 }
@@ -833,32 +898,47 @@ DWORD WINAPI Sign() {
 DWORD WINAPI Check() {
 
     WaitForSingleObject(hMutex, INFINITE);
-
     ReadFromFile(ofn.lpstrFile);
+    int readQu = bytesRead;
 
-    int i = 0;
-    BOOL flag = TRUE;
-    while (i < sizeof(Buf) && flag) {
-        if (Buf[i] == '\0') {
-            flag = FALSE;
-            continue;
+    unsigned char b[4] = { 0 };
+    int i = readQu - 1;
+    while (Buf[i] != '\n') 
+        i--;
+    int k = 0;
+    for (i = i + 1; i < readQu; i++) 
+        if (Buf[i] != '\0') {
+            b[k] = Buf[i];
+            k++;
         }
 
-        ByteArr[i] = Buf[i];
-        //check sign
+    int signInFile = atoi((const char*)b);
 
-        i++;
-    }
+    int r = p1 * q1;
+    char* fileText = new char[readQu - 5];
+    for (int k = 0; k < readQu - 6; k++)
+        fileText[k] = Buf[k];
+        
+    int fileDigest = GetDigest(fileText, r, readQu - 6);
+    int digest = FastExponentiation(signInFile, e, r);
+    int signature = FastExponentiation(digest, d, r);
 
-    int msb = MessageBox(hWndSC, L"checked. save to file?", L"result", MB_OK | MB_OKCANCEL); //три исхода проверки ЭЦП
-    if (msb == IDOK) {
-        if (GetSaveFileName(&ofn)) {
-            WriteToFile(ByteArr, ofn.lpstrFile);
-        }
-    }
+    char buf[4] = { 0 };
+    _itoa(digest, buf, 10);
+    SetWindowTextA(hHEdit, buf);
+    _itoa(signature, buf, 10);
+    SetWindowTextA(hSEdit, buf);
 
+    int msb;
+    if (signInFile == 0)
+        msb = MessageBox(hWndSC, L"file is not signed", L"no sign", MB_OK);
+    else if (digest == fileDigest)
+        msb = MessageBox(hWndSC, L"signs coincide", L"ok", MB_OK);
+    else 
+        msb = MessageBox(hWndSC, L"signs differ", L"diff signs", MB_OK);
+
+    delete[] fileText;
     ClearBuf(Buf);
-    ClearByteArr(ByteArr);
     ReleaseMutex(hMutex);
     ExitThread(0);
 }
@@ -879,53 +959,70 @@ DWORD WINAPI Extract() {
     ExitThread(0);
 }
 
-BOOL InputValidation(int p, int q, int b, int &n) {
-    
+BOOL InputValidationED(int p, int q, int b, int &n) {    
     int msb;
-    if (!IsPrime(p))
-    {
+    if (!IsPrime(p)) {
         msb = MessageBox(hWndED, L"P must be a prime number", L"error", MB_OK);
         return FALSE;
     }
-    if (!IsPrime(q))
-    {
+    if (!IsPrime(q)) {
         msb = MessageBox(hWndED, L"Q must be a prime number", L"error", MB_OK);
         return FALSE;
     }
-    if (p % 4 != 3)
-    {
+    if (p % 4 != 3) {
         msb = MessageBox(hWndED, L"Condition P = 3 mod 4 is not met", L"error", MB_OK);
         return FALSE;
     }
-    if (q % 4 != 3)
-    {
+    if (q % 4 != 3) {
         msb = MessageBox(hWndED, L"Condition Q = 3 mod 4 is not met", L"error", MB_OK);
         return FALSE;
     }
-    if (q == p)
-    {
+    if (q == p) {
         msb = MessageBox(hWndED, L"P and Q must not be equal", L"error", MB_OK);
         return FALSE;
     }
     n = p * q;
-    if (n >= INT_MAX)
-    {
+    if (n >= INT_MAX) {
         msb = MessageBox(hWndED, L"Too large N. Choose other P and Q", L"error", MB_OK);
         return FALSE;
     }
-    if (b >= n)
-    {
+    if (b >= n) {
         msb = MessageBox(hWndED, L"Condition B < N is not met", L"error", MB_OK);
         return FALSE;
     }
     return TRUE;
 }
 
-BOOL IsPrime(int x) {
+BOOL InputValidationS(int p, int q, int d, int& e) {
+    int msb;
+    if (!IsPrime(p)) {
+        msb = MessageBox(hWndSC, L"P must be a prime number", L"error", MB_OK);
+        return FALSE;
+    }
+    if (!IsPrime(q)) {
+        msb = MessageBox(hWndSC, L"Q must be a prime number", L"error", MB_OK);
+        return FALSE;
+    }
+    int phi_r = (p - 1) * (q - 1);
+    if (d < 2) {
+        msb = MessageBox(hWndSC, L"D must be greater than 1", L"error", MB_OK);
+        return FALSE;
+    }
+    if (d >= phi_r) {
+        msb = MessageBox(hWndSC, L"D must be less than Phi(r)", L"error", MB_OK);
+        return FALSE;
+    }
+    if (GetGCD(d, phi_r) != 1) {
+        msb = MessageBox(hWndSC, L"D must be coprime with Phi(r)", L"error", MB_OK);
+        return FALSE;
+    }
+    e = MultInverse(d, phi_r);
+    return TRUE;
+}
 
+BOOL IsPrime(int x) {
     int i = 2;
-    while (i * i <= x)
-    {
+    while (i * i <= x) {
         if (x % i == 0)
             return FALSE;
         i++;
@@ -934,13 +1031,11 @@ BOOL IsPrime(int x) {
 }
 
 void ExtendedEuclideanAlgorithm(int num1, int num2, int &res1, int &res2) {
-
     int d0 = num1, d1 = num2;
     int x0 = 1, x1 = 0;
     int y0 = 0, y1 = 1;
     int q, d2, x2, y2;
-    while (d1 > 1)
-    {
+    while (d1 > 1) {
         q = d0 / d1;
         d2 = d0 % d1;
         x2 = x0 - q * x1;
@@ -957,12 +1052,9 @@ void ExtendedEuclideanAlgorithm(int num1, int num2, int &res1, int &res2) {
 }
 
 long FastExponentiation(long number, int degree, int mod) {
-
     long res = 1;
-    while (degree != 0)
-    {
-        while (degree % 2 == 0)
-        {
+    while (degree != 0) {
+        while (degree % 2 == 0) {
             number = number * number % mod;
             degree /= 2;
         }
@@ -970,4 +1062,41 @@ long FastExponentiation(long number, int degree, int mod) {
         degree--;
     }
     return res;
+}
+
+int GetGCD(int a, int b) {
+    int t;
+    while (b > 0) {
+        t = b;
+        b = a % b;
+        a = t;
+    }
+    return (a);
+}
+
+int MultInverse(int d, int mod) {
+    int g0 = mod, g1 = d, u0 = 1, v0 = 0, u1 = 0, v1 = 1;
+    while (g1 != 0) {
+        int y = (int)(g0 / g1);
+        int gi = g0 - y * g1;
+        int ui = u0 - y * u1;
+        int vi = v0 - y * v1;
+        g0 = g1;
+        g1 = gi;
+        u0 = u1;
+        u1 = ui;
+        v0 = v1;
+        v1 = vi;
+    }
+    int x = v0;
+    if (x >= 0)
+        return x;
+    return (x + mod);
+}
+
+int GetDigest(char* text, int r, int readQu) {
+    int h = 100;
+    for (int i = 0; i < readQu; i++)
+        h = (h + text[i]) * (h + text[i]) % r;
+    return h;
 }
