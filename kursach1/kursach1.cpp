@@ -11,6 +11,9 @@
 #include <iostream>
 #include <fstream>
 #include <cstdlib>
+#include <cmath>
+
+//#include "Image.h"
 
 #ifndef UNICODE
 #define UNICODE
@@ -19,7 +22,9 @@
 #define MAX_LOADSTRING 100
 #define BUF 32768
 
-#define BCKG_NAME L"C:\\Users\\Lenovo\\Downloads\\ClpYqHIejcs.bmp" //L"C:\\Users\\Lenovo\\OneDrive\\Рабочий стол\\осасп2\\лаб1\\lab1.3\\penguin.bmp"
+#define BCKG_NAME L"C:\\Users\\Lenovo\\OneDrive\\Рабочий стол\\курсач((( 5\\three.bmp" 
+#define BCKG_ED_NAME L"C:\\Users\\Lenovo\\OneDrive\\Рабочий стол\\курсач((( 5\\four.bmp"
+#define BCKG_SC_NAME L"C:\\Users\\Lenovo\\OneDrive\\Рабочий стол\\курсач((( 5\\five.bmp"
 
 #define BTN_ENC_DEC 1
 #define BTN_ENC 2
@@ -34,6 +39,7 @@
 using namespace std;
 
 static char Buf[BUF];
+static unsigned char sBuf[BUF];
 wchar_t filename[260] = L"";
 OPENFILENAME ofn = { 0 };
 static unsigned char ByteArr[BUF] = { 0 };
@@ -53,9 +59,6 @@ LPVOID ReadFromFile(LPWSTR);
 vector<int> IntReadFromFile(LPWSTR);
 void IntWriteToFile(int[BUF / 4], LPWSTR);
 void WriteToFile(unsigned char[BUF], LPWSTR, int);
-void ClearBuf(char (&)[BUF]);
-void ClearByteArr(unsigned char (&)[BUF]);
-void IntToString(int*, char (&)[BUF], int);
 DWORD WINAPI Encipher();
 DWORD WINAPI Decipher();
 DWORD WINAPI Sign();
@@ -66,13 +69,19 @@ DWORD WINAPI Extract();
 BOOL InputValidationED(int, int, int, int&);
 BOOL InputValidationS(int, int, int, int&);
 BOOL IsPrime(int);
+void ClearBuf(char(&)[BUF]);
+void ClearByteArr(unsigned char(&)[BUF]);
+void IntToString(int*, char(&)[BUF], int);
 void ExtendedEuclideanAlgorithm(int, int, int&, int&);
 long FastExponentiation(long, int, int);
 int GetGCD(int, int);
 int MultInverse(int, int);
 int GetDigest(char*, int, int);
+void ByteToBit(unsigned char, unsigned char(&)[8]);
+unsigned char BitsToByte(unsigned char[8]);
+void SaveBMP(unsigned char[54], unsigned char*, int);
 
-HBITMAP hBitmap;
+HBITMAP hBitmap, hBitmapED, hBitmapSC, hBitmapHE;
 HWND hWndMain;
 HINSTANCE HInstance;
 HWND hWndED, hWndSC, hWndHE;
@@ -80,6 +89,7 @@ int NCmdShow;
 HANDLE hMutexOF = NULL, hMutex = NULL;
 HWND hPTEdit, hCTEdit;
 HWND hHEdit, hSEdit;
+HWND hSTextEdit;
 DWORD bytesRead;
 
 void RegisterEncDecWinClass();
@@ -104,6 +114,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     NCmdShow = nCmdShow;
 
     hBitmap = (HBITMAP)LoadImage(NULL, BCKG_NAME, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+    hBitmapED = (HBITMAP)LoadImage(NULL, BCKG_ED_NAME, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+    hBitmapSC = (HBITMAP)LoadImage(NULL, BCKG_SC_NAME, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
 
     LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
     LoadStringW(hInstance, IDC_KURSACH1, szWindowClass, MAX_LOADSTRING);
@@ -160,8 +172,8 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
     wcex.hInstance      = hInstance;
     wcex.hIcon          = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_KURSACH1));
     wcex.hCursor        = LoadCursor(nullptr, IDC_ARROW);
-    wcex.hbrBackground  = (HBRUSH)(COLOR_GRAYTEXT + 13); 
-    //wcex.hbrBackground = CreatePatternBrush(hBitmap);
+    //wcex.hbrBackground  = (HBRUSH)(COLOR_GRAYTEXT + 13); 
+    wcex.hbrBackground = CreatePatternBrush(hBitmap);
     wcex.lpszMenuName   = MAKEINTRESOURCEW(IDC_KURSACH1);
     wcex.lpszClassName  = L"MainWindowClass";
     wcex.hIconSm        = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
@@ -227,7 +239,7 @@ void RegisterEncDecWinClass() { //окно шифрования/дешифров
     wcexed.lpfnWndProc = EncDecWinProc;
     wcexed.hIcon = LoadIcon(HInstance, MAKEINTRESOURCE(IDI_KURSACH1));
     wcexed.hInstance = HInstance;
-    wcexed.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wcexed.hbrBackground = CreatePatternBrush(hBitmapED);
     wcexed.lpszClassName = L"EncDecWindowClass";
     RegisterClassEx(&wcexed);
 }
@@ -241,7 +253,7 @@ void RegisterSignCheckWinClass() { //окно постановки/провер�
     wcexsc.lpfnWndProc = SignCheckWinProc;
     wcexsc.hIcon = LoadIcon(HInstance, MAKEINTRESOURCE(IDI_KURSACH1));
     wcexsc.hInstance = HInstance;
-    wcexsc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wcexsc.hbrBackground = CreatePatternBrush(hBitmapSC);
     wcexsc.lpszClassName = L"SignCheckWindowClass";
     RegisterClassEx(&wcexsc);
 }
@@ -488,18 +500,19 @@ LRESULT CALLBACK HideExtractWinProc(HWND hWndHE, UINT message, WPARAM wParam, LP
         SetOpenFileParams(hWndHE);
         hHideBtn = CreateWindow(L"button", L"hide", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 50, 50, 80, 30, hWndHE, reinterpret_cast<HMENU>(BTN_HIDE), NULL, NULL);
         hExtractBtn = CreateWindow(L"button", L"extract", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 150, 50, 80, 30, hWndHE, reinterpret_cast<HMENU>(BTN_EXTRACT), NULL, NULL);
+        hSTextEdit = CreateWindow(L"edit", L"text", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT, 50, 100, 300, 20, hWndHE, NULL, NULL, NULL);
         break;
     case WM_COMMAND:
     {
         switch (LOWORD(wParam))
         {
-        case BTN_SIGN:
+        case BTN_HIDE:
             if (GetOpenFileName(&ofn)) {
                 threadHide = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)Hide, NULL, NULL, NULL);
             }
             break;
 
-        case BTN_CHECK:
+        case BTN_EXTRACT:
             if (GetOpenFileName(&ofn)) {
                 threadExtract = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)Extract, NULL, NULL, NULL);
             }
@@ -688,44 +701,6 @@ void IntWriteToFile(int Data[BUF / 4], LPWSTR path) {
 
     WriteFile(WFile, Data, bytesRead * 4, NULL, NULL); 
     CloseHandle(WFile);
-}
-
-void ClearBuf(char(&Buf)[BUF]) {
-    int i = 0;
-    BOOL flag = TRUE;
-
-    while (i < sizeof(Buf) && flag) {
-        if (Buf[i] == '\0') {
-            flag = FALSE;
-            continue;
-        }
-        Buf[i] = '\0';
-        i++;
-    }
-}
-
-void ClearByteArr(unsigned char(&ByteArr)[BUF]) {
-    int i = 0;
-    BOOL flag = TRUE;
-
-    while (i < sizeof(ByteArr) && flag) {
-        if (ByteArr[i] == '\0') {
-            flag = FALSE;
-            continue;
-        }
-        ByteArr[i] = '\0';
-        i++;
-    }
-}
-
-void IntToString(int* Text, char (&res)[BUF], int count) {
-    for (int i = 0; i < count * 4; i += 4) {
-        for (int j = 0; j < 4; j++) {
-            res[i + j] = (char)(Text[i / 4] >> j * 8);
-            if (res[i + j] == '\0')
-                res[i + j] = (char)32;
-        }
-    }
 }
 
 DWORD WINAPI Encipher() { 
@@ -947,6 +922,44 @@ DWORD WINAPI Hide() {
 
     WaitForSingleObject(hMutex, INFINITE);
 
+    unsigned char info[54] = { 0 };
+    ReadFromFile(ofn.lpstrFile);
+    for (int i = 0; i < BUF; i++) {
+        sBuf[i] = (Buf[i] + 256) % 256;
+    }
+    int readBytes = bytesRead;
+    unsigned char* bytes = new unsigned char[readBytes - 54 + 1];
+    for (int i = 0; i < 54; i++) {
+        info[i] = sBuf[i];
+    }
+    for (int j = 54; j < readBytes; j++) {
+        bytes[j - 54] = sBuf[j];
+    }
+
+    unsigned char buf[100];
+    int num = GetWindowTextA(hSTextEdit, (char *)buf, 100);
+
+    unsigned char textBits[100][8] = { 0 };
+    int pos = 0;
+    for (int i = 0; i < num; i++) {
+        unsigned char bits[8];
+        ByteToBit(buf[i], bits);
+
+        for (int j = 0; j < 8; j++) {
+            bytes[3 * (pos + j)] = bytes[3 * (pos + j)] & 254 | bits[j];
+        }
+
+        pos += 8;
+    }
+
+    for (int j = 0; j < 8; j++) {
+        bytes[3 * (pos + j)] = '\0';
+    }
+
+
+    //Save bmp
+    SaveBMP(info, bytes, readBytes);
+
     ReleaseMutex(hMutex);
     ExitThread(0);
 }
@@ -955,8 +968,72 @@ DWORD WINAPI Extract() {
 
     WaitForSingleObject(hMutex, INFINITE);
 
+    unsigned char info[54] = { 0 };
+    ReadFromFile(ofn.lpstrFile);
+    for (int i = 0; i < BUF; i++) {
+        sBuf[i] = (Buf[i] + 256) % 256;
+    }
+    int readBytes = bytesRead;
+    unsigned char* bytes = new unsigned char[readBytes - 54 + 1];
+    for (int i = 0; i < 54; i++) {
+        info[i] = sBuf[i];
+    }
+    for (int j = 54; j < readBytes; j++) {
+        bytes[j - 54] = sBuf[j];
+    }
+
+    unsigned char text[100] = { 0 };
+    for (int i = 0; i < readBytes - 54; i += 24) {
+        unsigned char bits[8];
+        for (int j = 0; j < 8; j++) {
+            bits[j] = bytes[i + j * 3];
+        }
+
+        text[i / 24] = BitsToByte(bits);
+    }
+
+    SetWindowTextA(hSTextEdit, (char *)text);
+
     ReleaseMutex(hMutex);
     ExitThread(0);
+}
+
+void ClearBuf(char(&Buf)[BUF]) {
+    int i = 0;
+    BOOL flag = TRUE;
+
+    while (i < sizeof(Buf) && flag) {
+        if (Buf[i] == '\0') {
+            flag = FALSE;
+            continue;
+        }
+        Buf[i] = '\0';
+        i++;
+    }
+}
+
+void ClearByteArr(unsigned char(&ByteArr)[BUF]) {
+    int i = 0;
+    BOOL flag = TRUE;
+
+    while (i < sizeof(ByteArr) && flag) {
+        if (ByteArr[i] == '\0') {
+            flag = FALSE;
+            continue;
+        }
+        ByteArr[i] = '\0';
+        i++;
+    }
+}
+
+void IntToString(int* Text, char(&res)[BUF], int count) {
+    for (int i = 0; i < count * 4; i += 4) {
+        for (int j = 0; j < 4; j++) {
+            res[i + j] = (char)(Text[i / 4] >> j * 8);
+            if (res[i + j] == '\0')
+                res[i + j] = (char)32;
+        }
+    }
 }
 
 BOOL InputValidationED(int p, int q, int b, int &n) {    
@@ -1099,4 +1176,40 @@ int GetDigest(char* text, int r, int readQu) {
     for (int i = 0; i < readQu; i++)
         h = (h + text[i]) * (h + text[i]) % r;
     return h;
+}
+
+void ByteToBit(unsigned char byte, unsigned char (&bits)[8]) {
+    BOOL st = TRUE;
+    for (int i = 0; i < 8; i++)
+    {
+        if ((byte >> i & 1) == 1) {
+            st = TRUE;
+        }
+        else st = FALSE;
+        bits[i] = st;
+    }
+}
+
+unsigned char BitsToByte(unsigned char bits[8]) {
+    unsigned char byte = 0;
+    for (int i = 0; i < 8; i++)
+        if (bits[i] & 1)    //  EXACTLY BINARY AND
+            byte += (unsigned char)pow(2, i);
+    return byte;
+}
+
+void SaveBMP(unsigned char info[54], unsigned char* data, int readBytes) {
+    int sizeInfo = sizeof(info);
+    int sizeData = sizeof(data);
+    unsigned char* all = new unsigned char[readBytes + 1];
+    int allSize = sizeof(all);
+    for (int i = 0; i < 54; i++)
+        all[i] = info[i];
+    for (int j = 54; j < readBytes; j++)
+        all[j] = data[j - 54];
+    
+    FILE* output = fopen("file.bmp", "wb+");
+    fwrite(all, sizeof(unsigned char), readBytes, output);
+    fclose(output);
+    //delete[] all;
 }
